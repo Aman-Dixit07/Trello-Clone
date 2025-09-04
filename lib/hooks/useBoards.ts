@@ -1,4 +1,5 @@
 "use client";
+import { Column } from "./../supabase/models";
 import { useUser } from "@clerk/nextjs";
 import { useSupabase } from "../supabase/SupabaseProvider";
 import { useEffect, useState } from "react";
@@ -52,4 +53,45 @@ export function useBoards() {
     }
   }
   return { boards, loading, error, createBoard };
+}
+
+export function useBoard(boardId: string) {
+  const { supabase } = useSupabase();
+
+  const [Columns, setColumns] = useState<Column[] | null>(null);
+  const [board, setBoard] = useState<Board | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (boardId) {
+      loadBoard();
+    } // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId, supabase]);
+
+  async function loadBoard() {
+    if (!boardId) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await boardDataService.getBoardWithColumns(
+        supabase!,
+        boardId
+      );
+      setBoard(data.board);
+      setColumns(data.columnsWithTasks);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load boards.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return {
+    board,
+    Columns,
+    error,
+    loading,
+  };
 }
