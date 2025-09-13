@@ -6,11 +6,12 @@ import {
   Plus,
   Trello,
   Rocket,
-  Check,
   Grid3X3,
   List,
   Filter,
   Search,
+  ListTodo,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,15 +25,86 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Board } from "@/lib/supabase/models";
 
 export default function DashboardPage() {
   const { user } = useUser();
-  const { createBoard, boards, error, loading } = useBoards();
+  const { createBoard, error, newBoards, boards, loading } = useBoards();
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isFilterOpen, setIsFilterOpen] = useState<boolean>(false);
+
+  function clearFilters() {
+    setFilters({
+      search: "",
+      dateRange: {
+        start: null as string | null,
+        end: null as string | null,
+      },
+      taskCount: {
+        min: null as number | null,
+        max: null as number | null,
+      },
+    });
+  }
+
+  const [filters, setFilters] = useState({
+    search: "",
+    dateRange: {
+      start: null as string | null,
+      end: null as string | null,
+    },
+    taskCount: {
+      min: null as number | null,
+      max: null as number | null,
+    },
+  });
+
+  const boardWithTaskCount = boards.map((board: Board) => ({
+    ...board,
+    taskCount: 0,
+  }));
+
+  const filteredBoards = boardWithTaskCount.filter((board: Board) => {
+    const matchesSearch = board.title
+      .toLowerCase()
+      .includes(filters.search.toLowerCase());
+
+    const matchesDateRange =
+      (!filters.dateRange.start ||
+        new Date(board.created_at) >= new Date(filters.dateRange.start)) &&
+      (!filters.dateRange.end ||
+        new Date(board.created_at) <= new Date(filters.dateRange.end));
+
+    return matchesSearch && matchesDateRange;
+  });
+
   const handleCreateBoard = async () => {
     await createBoard({ title: "New Board" });
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className=" animate-spin size-10" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div>
+        <h2>Error loading boards</h2>
+        <p>{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 ">
@@ -45,6 +117,7 @@ export default function DashboardPage() {
             {user?.firstName ?? user?.emailAddresses[0].emailAddress}! 👋
           </h1>
           <p className="text-gray-600">
+            {" "}
             Here&apos;s what&apos;s happening with your boards today
           </p>
         </div>
@@ -58,8 +131,8 @@ export default function DashboardPage() {
                   <p className="text-xs sm:text-sm font-medium text-gray-600">
                     Total Boards
                   </p>
-                  <p className="text-xl sm:text-sm font-medium text-gray-900">
-                    {boards.length}
+                  <p className="text-xl sm:text-2xl font-medium text-gray-900">
+                    {newBoards.length}
                   </p>
                 </div>
                 <div className="h-10 w-10 sm:h-12 sm:w-12 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -75,8 +148,8 @@ export default function DashboardPage() {
                   <p className="text-xs sm:text-sm font-medium text-gray-600">
                     Active Projects
                   </p>
-                  <p className="text-xl sm:text-sm font-medium text-gray-900">
-                    {boards.length}
+                  <p className="text-xl sm:text-2xl font-medium text-gray-900">
+                    {newBoards.length}
                   </p>
                 </div>
                 <div className="h-10 w-10 sm:h-12 sm:w-12 bg-green-100 rounded-lg flex items-center justify-center">
@@ -92,9 +165,9 @@ export default function DashboardPage() {
                   <p className="text-xs sm:text-sm font-medium text-gray-600">
                     Recent Activity
                   </p>
-                  <p className="text-xl sm:text-sm font-medium text-gray-900">
+                  <p className="text-xl sm:text-2xl font-medium text-gray-900">
                     {
-                      boards.filter((board) => {
+                      newBoards.filter((board) => {
                         const updatedAt = new Date(board.updated_at);
                         const oneWeekAgo = new Date();
                         oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
@@ -116,12 +189,23 @@ export default function DashboardPage() {
                   <p className="text-xs sm:text-sm font-medium text-gray-600">
                     Total Tasks
                   </p>
-                  <p className="text-xl sm:text-sm font-medium text-gray-900">
-                    -
+                  <p className="text-xl sm:text-2xl font-medium text-gray-900">
+                    {newBoards.reduce(
+                      (boardSum, board) =>
+                        boardSum +
+                        board.columns.reduce(
+                          (colSum, col) =>
+                            col.title.toLowerCase() !== "done"
+                              ? colSum + col.tasks.length
+                              : colSum,
+                          0
+                        ),
+                      0
+                    )}
                   </p>
                 </div>
                 <div className="h-10 w-10 sm:h-12 sm:w-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                  <Check className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600" />
+                  <ListTodo className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600" />
                 </div>
               </div>
             </CardContent>
@@ -179,9 +263,9 @@ export default function DashboardPage() {
               id="search"
               placeholder="Search boards..."
               className="pl-10"
-              //onChange={(e) =>
-              //setFilters((prev) => ({ ...prev, search: e.target.value }))
-              //}
+              onChange={(e) =>
+                setFilters((prev) => ({ ...prev, search: e.target.value }))
+              }
             />
           </div>
 
@@ -190,7 +274,7 @@ export default function DashboardPage() {
             <div>No boards yet</div>
           ) : viewMode === "grid" ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-              {boards.map((board, key) => (
+              {filteredBoards.map((board, key) => (
                 <Link href={`/boards/${board.id}`} key={key}>
                   <Card className="hover:shadow-lg transition-shadow cursor-pointer group">
                     <CardHeader className="pb-3">
@@ -285,6 +369,118 @@ export default function DashboardPage() {
           )}
         </div>
       </main>
+
+      {/*Filter Dilaog*/}
+
+      <Dialog open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+        <DialogContent className="w-[95vw] max-w-[425px] mx-auto">
+          <DialogHeader>
+            <DialogTitle>Filter Boards</DialogTitle>
+            <p className="text-sm text-gray-600">
+              Filter boards by title, date, or task count.
+            </p>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Search</Label>
+              <Input
+                id="search"
+                value={filters.search}
+                placeholder="Search board titles.."
+                onChange={(e) =>
+                  setFilters((prev) => ({ ...prev, search: e.target.value }))
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Date Range</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">Start Date</Label>
+                  <Input
+                    type="date"
+                    onChange={(e) =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        dateRange: {
+                          ...prev.dateRange,
+                          start: e.target.value || null,
+                        },
+                      }))
+                    }
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-xs">End Date</Label>
+                  <Input
+                    type="date"
+                    onChange={(e) =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        dateRange: {
+                          ...prev.dateRange,
+                          end: e.target.value || null,
+                        },
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="">Task Count</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">Minimum</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="Min tasks"
+                    onChange={(e) =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        taskCount: {
+                          ...prev.taskCount,
+                          min: e.target.value ? Number(e.target.value) : null,
+                        },
+                      }))
+                    }
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Maximum</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="Max tasks"
+                    onChange={(e) =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        taskCount: {
+                          ...prev.taskCount,
+                          max: e.target.value ? Number(e.target.value) : null,
+                        },
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row justify-between pt-4 space-y-2 sm:space-y-0 sm:space-x-2">
+              <Button variant={"outline"} onClick={clearFilters}>
+                Clear Filters
+              </Button>
+              <Button onClick={() => setIsFilterOpen(false)}>
+                Apply Filters
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -41,6 +41,23 @@ export const boardService = {
     if (error) throw error;
     return data || [];
   },
+
+  async updateBoard(
+    supabase: SupabaseClient,
+    boardId: string,
+    updates: Partial<Board>
+  ): Promise<Board> {
+    const { data, error } = await supabase
+      .from("boards")
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq("id", boardId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return data;
+  },
 };
 
 //functions related to columns
@@ -75,6 +92,22 @@ export const columnService = {
 
     return data || [];
   },
+
+  async updateColumnTitle(
+    supabase: SupabaseClient,
+    columnId: string,
+    title: string
+  ): Promise<Column> {
+    const { data, error } = await supabase
+      .from("columns")
+      .update({ title })
+      .eq("id", columnId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
 };
 
 //functions related to tasks
@@ -93,6 +126,21 @@ export const taskService = {
     if (error) throw error;
 
     return data || [];
+  },
+
+  async createTask(
+    supabase: SupabaseClient,
+    task: Omit<Task, "id" | "created_at" | "updated_at">
+  ): Promise<Task> {
+    const { data, error } = await supabase
+      .from("tasks")
+      .insert(task)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return data;
   },
 };
 
@@ -150,5 +198,22 @@ export const boardDataService = {
     }));
 
     return { board, columnsWithTasks };
+  },
+
+  // Coustom function
+  async getBoardsWithColumnsAndTasks(supabase: SupabaseClient, userId: string) {
+    const boards = await boardService.getBoards(supabase, userId);
+    const result = await Promise.all(
+      boards.map(async (board) => {
+        const columns = await columnService.getColumns(supabase, board.id);
+        const tasks = await taskService.getTasksByBoard(supabase, board.id);
+        const columnsWithTasks = columns.map((col) => ({
+          ...col,
+          tasks: tasks.filter((task) => task.column_id === col.id),
+        }));
+        return { ...board, columns: columnsWithTasks };
+      })
+    );
+    return result;
   },
 };

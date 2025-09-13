@@ -1,10 +1,14 @@
 "use client";
-import { Column } from "./../supabase/models";
+import { ColumnWithTasks, Board, newBoard } from "./../supabase/models";
 import { useUser } from "@clerk/nextjs";
 import { useSupabase } from "../supabase/SupabaseProvider";
 import { useEffect, useState } from "react";
-import { Board } from "../supabase/models";
-import { boardDataService, boardService } from "../services";
+import {
+  boardDataService,
+  boardService,
+  taskService,
+  columnService,
+} from "../services";
 
 export function useBoards() {
   const { user } = useUser();
@@ -12,6 +16,7 @@ export function useBoards() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [newBoards, setNewBoards] = useState<newBoard[]>([]);
 
   useEffect(() => {
     if (user) {
@@ -27,7 +32,12 @@ export function useBoards() {
       setLoading(true);
       setError(null);
       const data = await boardService.getBoards(supabase!, user.id);
+      const result = await boardDataService.getBoardsWithColumnsAndTasks(
+        supabase!,
+        user.id
+      );
       setBoards(data);
+      setNewBoards(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load boards");
     } finally {
@@ -52,13 +62,15 @@ export function useBoards() {
       setError(err instanceof Error ? err.message : "Failed to create board");
     }
   }
-  return { boards, loading, error, createBoard };
+
+  return { boards, loading, error, createBoard, newBoards };
 }
 
 export function useBoard(boardId: string) {
   const { supabase } = useSupabase();
+  const { user } = useUser();
 
-  const [Columns, setColumns] = useState<Column[] | null>(null);
+  const [columns, setColumns] = useState<ColumnWithTasks[]>([]);
   const [board, setBoard] = useState<Board | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,10 +100,104 @@ export function useBoard(boardId: string) {
     }
   }
 
+  async function updateBoard(boardId: string, updates: Partial<Board>) {
+    try {
+      const updateBoard = await boardService.updateBoard(
+        supabase!,
+        boardId,
+        updates
+      );
+
+      setBoard(updateBoard);
+      return updateBoard;
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to update the board."
+      );
+    }
+  }
+
+  async function createRealTask(
+    columnId: string,
+    taskData: {
+      title: string;
+      description?: string;
+      assignee?: string;
+      dueDate?: string;
+      priority?: "low" | "medium" | "high";
+    }
+  ) {
+    try {
+      const newTask = await taskService.createTask(supabase!, {
+        title: taskData.title,
+        description: taskData.description || null,
+        assignee: taskData.assignee || null,
+        due_date: taskData.dueDate || null,
+        column_id: columnId,
+        sort_order:
+          columns.find((col) => col.id === columnId)?.tasks.length || 0,
+        priority: taskData.priority || "medium",
+      });
+
+      setColumns((prev) =>
+        prev.map((col) =>
+          col.id === columnId ? { ...col, tasks: [...col.tasks, newTask] } : col
+        )
+      );
+
+      return newTask;
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to create the task."
+      );
+    }
+  }
+
+  async function createColumn(title: string) {
+    if (!board || !user) throw new Error("Board now loaded");
+
+    try {
+      const newColumn = await columnService.createColumn(supabase!, {
+        title,
+        board_id: board.id,
+        sort_order: columns.length,
+        user_id: user.id,
+      });
+
+      setColumns((prev) => [...prev, { ...newColumn, tasks: [] }]);
+      return newColumn;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create column.");
+    }
+  }
+
+  async function updateColumn(columnId: string, title: string) {
+    try {
+      const updatedColumn = await columnService.updateColumnTitle(
+        supabase!,
+        columnId,
+        title
+      );
+
+      setColumns((prev) =>
+        prev.map((col) =>
+          col.id === columnId ? { ...col, ...updatedColumn } : col
+        )
+      );
+      return updateColumn;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create column.");
+    }
+  }
+
   return {
     board,
-    Columns,
+    columns,
     error,
     loading,
+    createRealTask,
+    createColumn,
+    updateColumn,
+    updateBoard,
   };
 }

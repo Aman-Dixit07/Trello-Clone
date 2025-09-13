@@ -8,6 +8,17 @@ export interface Board {
   updated_at: string;
 }
 
+export interface newBoard {
+  id: string;
+  title: string;
+  description: string | null;
+  color: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+  columns: newColumn[];
+}
+
 export interface Column {
   id: string;
   board_id: string;
@@ -15,6 +26,16 @@ export interface Column {
   sort_order: number;
   created_at: string;
   user_id: string;
+}
+
+export interface newColumn {
+  id: string;
+  board_id: string;
+  title: string;
+  sort_order: number;
+  created_at: string;
+  user_id: string;
+  tasks: Task[];
 }
 
 export type ColumnWithTasks = Column & {
