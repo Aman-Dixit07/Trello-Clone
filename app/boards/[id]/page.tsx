@@ -27,6 +27,24 @@ import { useState } from "react";
 import { ColumnWithTasks, Task } from "@/lib/supabase/models";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  rectIntersection,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 function DroppableColumn({
   column,
@@ -39,9 +57,20 @@ function DroppableColumn({
   onCreateTask: (taskData: any) => Promise<void>;
   onEditColumn: (column: ColumnWithTasks) => void;
 }) {
+  const { setNodeRef, isOver } = useDroppable({ id: column.id });
+
   return (
-    <div className="w-full lg:flex-shrink-0 lg:w-80">
-      <div className="bg-white rounded-lg shadow-sm border">
+    <div
+      ref={setNodeRef}
+      className={`w-full lg:flex-shrink-0 lg:w-80 ${
+        isOver ? "bg-blue-50 rounded-lg" : ""
+      }`}
+    >
+      <div
+        className={`bg-white rounded-lg shadow-sm border ${
+          isOver ? "ring-2 ring-blue-300" : ""
+        }`}
+      >
         {/*Column Header */}
 
         <div className="p-3 sm:p-4 border-b">
@@ -145,6 +174,21 @@ function DroppableColumn({
 }
 
 function SortableTask({ task }: { task: Task }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id });
+
+  const styles = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
   function getPriorityColor(priority: "low" | "medium" | "high"): string {
     switch (priority) {
       case "high":
@@ -159,7 +203,7 @@ function SortableTask({ task }: { task: Task }) {
   }
 
   return (
-    <div>
+    <div ref={setNodeRef} style={styles} {...listeners} {...attributes}>
       <Card className="cursor-pointer hover:shadow-md transition-shadow">
         <CardContent className="p-3 sm:p-4">
           <div className="space-y-2 sm:space-y-3">
@@ -206,6 +250,64 @@ function SortableTask({ task }: { task: Task }) {
   );
 }
 
+function TaskOverlay({ task }: { task: Task }) {
+  function getPriorityColor(priority: "low" | "medium" | "high"): string {
+    switch (priority) {
+      case "high":
+        return "bg-red-500";
+      case "medium":
+        return "bg-yellow-500";
+      case "low":
+        return "bg-green-500";
+      default:
+        return "bg-yellow-500";
+    }
+  }
+
+  return (
+    <Card className="cursor-pointer hover:shadow-md transition-shadow">
+      <CardContent className="p-3 sm:p-4">
+        <div className="space-y-2 sm:space-y-3">
+          {/* Task Header */}
+          <div className="flex items-start justify-between">
+            <h4 className="font-medium text-gray-900 text-sm leading-tight flex-1 min-w-0 pr-2">
+              {task.title}
+            </h4>
+          </div>
+
+          {/* Task Description */}
+          <p className="text-xs text-gray-600 line-clamp-2">
+            {task.description || "No description."}
+          </p>
+
+          {/* Task Meta */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-1 sm:space-x-2 min-w-0">
+              {task.assignee && (
+                <div className="flex items-center space-x-1 text-xs text-gray-500">
+                  <User className="h-3 w-3" />
+                  <span className="truncate">{task.assignee}</span>
+                </div>
+              )}
+              {task.due_date && (
+                <div className="flex items-center space-x-1 text-xs text-gray-500">
+                  <Calendar className="h-3 w-3" />
+                  <span className="truncate">{task.due_date}</span>
+                </div>
+              )}
+            </div>
+            <div
+              className={`w-2 h-2 rounded-full flex-shrink-0 ${getPriorityColor(
+                task.priority
+              )}`}
+            />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function BoardPage() {
   const { id } = useParams<{ id: string }>();
   const {
@@ -215,6 +317,8 @@ export default function BoardPage() {
     updateColumn,
     createColumn,
     updateBoard,
+    setColumns,
+    moveTask,
   } = useBoard(id);
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -234,9 +338,17 @@ export default function BoardPage() {
     dueDate: null as string | null,
   });
 
-  {
-    /*Filters functions*/
-  }
+  const [activeTask, setActiveTask] = useState<Task | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
+  /*Filters functions*/
 
   function handleFilterChange(
     type: "priority" | "dueDate",
@@ -344,6 +456,102 @@ export default function BoardPage() {
     setIsEditingColumn(true);
     setEditingColumn(column);
     setEditingColumnTitle(column.title);
+  }
+
+  /*Dnd functions*/
+
+  function handleDragStart(event: DragStartEvent) {
+    const taskId = event.active.id as string;
+    const task = columns
+      .flatMap((col) => col.tasks)
+      .find((task) => task.id === taskId);
+
+    if (task) {
+      setActiveTask(task);
+    }
+  }
+
+  function handleDragOver(event: DragOverEvent) {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    const sourceColumn = columns.find((col) =>
+      col.tasks.some((task) => task.id === activeId)
+    );
+
+    const targetColumn = columns.find((col) =>
+      col.tasks.some((task) => task.id === overId)
+    );
+
+    if (!sourceColumn || !targetColumn) return;
+
+    if (sourceColumn.id === targetColumn.id) {
+      const activeIndex = sourceColumn.tasks.findIndex(
+        (task) => task.id === activeId
+      );
+
+      const overIndex = targetColumn.tasks.findIndex(
+        (task) => task.id === overId
+      );
+
+      if (activeIndex !== overIndex) {
+        setColumns((prev: ColumnWithTasks[]) => {
+          const newColumns = [...prev];
+          const column = newColumns.find((col) => col.id === sourceColumn.id);
+          if (column) {
+            const tasks = [...column.tasks];
+            const [removed] = tasks.splice(activeIndex, 1);
+            tasks.splice(overIndex, 0, removed);
+            column.tasks = tasks;
+          }
+          return newColumns;
+        });
+      }
+    }
+  }
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over) return;
+
+    const taskId = active.id as string;
+    const overId = over.id as string;
+
+    const targetColumn = columns.find((col) => col.id === overId);
+    if (targetColumn) {
+      const sourceColumn = columns.find((col) =>
+        col.tasks.some((task) => task.id === taskId)
+      );
+
+      if (sourceColumn && sourceColumn.id !== targetColumn.id) {
+        await moveTask(taskId, targetColumn.id, targetColumn.tasks.length);
+      }
+    } else {
+      //check to see if were dropping on another task
+      const sourceColumn = columns.find((col) =>
+        col.tasks.some((task) => task.id === taskId)
+      );
+
+      const targetColumn = columns.find((col) =>
+        col.tasks.some((task) => task.id === overId)
+      );
+
+      if (sourceColumn && targetColumn) {
+        const oldIndex = sourceColumn.tasks.findIndex(
+          (task) => task.id === taskId
+        );
+        const newIndex = targetColumn.tasks.findIndex(
+          (task) => task.id === overId
+        );
+
+        if (oldIndex !== newIndex) {
+          await moveTask(taskId, targetColumn.id, newIndex);
+        }
+      }
+    }
   }
 
   const filteredColumns = columns.map((column) => ({
@@ -613,37 +821,54 @@ export default function BoardPage() {
               </DialogContent>
             </Dialog>
           </div>
-
-          <div
-            className="flex flex-col lg:flex-row lg:space-x-6 lg:overflow-x-auto lg:pb-6 lg:px-2 lg:-mx-2 lg:[&::-webkit-scrollbar]:h-2  lg:[&::-webkit-scrollbar-track]:bg-gray-100  lg:[&::-webkit-scrollbar-thumb]:bg-gray-300 lg:[::-webkit-scrollbar-thumb]:rounded-full 
-            space-y-4 lg:space-y-0"
+          {/* Board Columns*/}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={rectIntersection}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
           >
-            {filteredColumns.map((column, key) => (
-              <DroppableColumn
-                key={key}
-                column={column}
-                onCreateTask={handleCreateTask}
-                onEditColumn={handleEditColumn}
-              >
-                <div className="space-y-3">
-                  {column.tasks.map((task, key) => (
-                    <SortableTask key={key} task={task}></SortableTask>
-                  ))}
-                </div>
-              </DroppableColumn>
-            ))}
+            <div
+              className="flex flex-col lg:flex-row lg:space-x-6 lg:overflow-x-auto lg:pb-6 lg:px-2 lg:-mx-2 lg:[&::-webkit-scrollbar]:h-2  lg:[&::-webkit-scrollbar-track]:bg-gray-100  lg:[&::-webkit-scrollbar-thumb]:bg-gray-300 lg:[::-webkit-scrollbar-thumb]:rounded-full 
+            space-y-4 lg:space-y-0"
+            >
+              {filteredColumns.map((column, key) => (
+                <DroppableColumn
+                  key={key}
+                  column={column}
+                  onCreateTask={handleCreateTask}
+                  onEditColumn={handleEditColumn}
+                >
+                  <SortableContext
+                    items={column.tasks.map((task) => task.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-3">
+                      {column.tasks.map((task, key) => (
+                        <SortableTask key={key} task={task} />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DroppableColumn>
+              ))}
 
-            <div className="w-full lg:flex-shrink-0 lg:w-80">
-              <Button
-                variant="outline"
-                className="w-full h-full min-h-[200px] border-dashed border-2 text-gray-500 hover:text-gray-700"
-                onClick={() => setIsCreatingColumn(true)}
-              >
-                <Plus />
-                Add another list
-              </Button>
+              <div className="w-full lg:flex-shrink-0 lg:w-80">
+                <Button
+                  variant="outline"
+                  className="w-full h-full min-h-[200px] border-dashed border-2 text-gray-500 hover:text-gray-700"
+                  onClick={() => setIsCreatingColumn(true)}
+                >
+                  <Plus />
+                  Add another list
+                </Button>
+              </div>
             </div>
-          </div>
+
+            <DragOverlay>
+              {activeTask ? <TaskOverlay task={activeTask} /> : null}
+            </DragOverlay>
+          </DndContext>
         </main>
       </div>
 
