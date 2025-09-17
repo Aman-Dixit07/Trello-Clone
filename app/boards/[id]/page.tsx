@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Calendar, MoreHorizontal, Plus, User } from "lucide-react";
+import { Calendar, MoreHorizontal, Plus, Trash2, User } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { ColumnWithTasks, Task } from "@/lib/supabase/models";
@@ -51,11 +51,13 @@ function DroppableColumn({
   children,
   onCreateTask,
   onEditColumn,
+  onDeleteColumn,
 }: {
   column: ColumnWithTasks;
   children: React.ReactNode;
   onCreateTask: (taskData: any) => Promise<void>;
   onEditColumn: (column: ColumnWithTasks) => void;
+  onDeleteColumn: (columnId: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
 
@@ -83,14 +85,24 @@ function DroppableColumn({
                 {column.tasks.length}
               </Badge>
             </div>
-            <Button
-              variant={"ghost"}
-              size={"sm"}
-              className="flex-shrink-0"
-              onClick={() => onEditColumn(column)}
-            >
-              <MoreHorizontal />
-            </Button>
+            <div className="flex items-center">
+              <Button
+                variant={"ghost"}
+                size={"sm"}
+                className="flex-shrink-0"
+                onClick={() => onEditColumn(column)}
+              >
+                <MoreHorizontal />
+              </Button>
+              <Button
+                variant={"ghost"}
+                size={"sm"}
+                className="flex-shrink-0 hover:text-red-600 hover:bg-red-100 cursor-pointer"
+                onClick={() => onDeleteColumn(column.id)}
+              >
+                <Trash2 />
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -173,7 +185,13 @@ function DroppableColumn({
   );
 }
 
-function SortableTask({ task }: { task: Task }) {
+function SortableTask({
+  task,
+  onDeleteTask,
+}: {
+  task: Task;
+  onDeleteTask: (taskId: string) => void;
+}) {
   const {
     attributes,
     listeners,
@@ -205,14 +223,23 @@ function SortableTask({ task }: { task: Task }) {
   return (
     <div ref={setNodeRef} style={styles} {...listeners} {...attributes}>
       <Card className="cursor-pointer hover:shadow-md transition-shadow">
-        <CardContent className="p-3 sm:p-4">
-          <div className="space-y-2 sm:space-y-3">
+        <CardContent className="w-full sm:px-1.5 px-1">
+          <div className="space-y-2 sm:space-y-3 ">
             {/*Task Header*/}
 
-            <div className="flex items-start justify-between">
+            <div className="flex justify-between items-center">
               <h4 className="font-medium text-gray-900 text-sm leading-tight flex-1 min-w-0 pr-2">
                 {task.title}
               </h4>
+
+              <Button
+                variant={"ghost"}
+                size={"sm"}
+                className="flex-shrink-0 hover:text-red-600 hover:bg-red-100 cursor-pointer"
+                onClick={() => onDeleteTask(task.id)}
+              >
+                <Trash2 />
+              </Button>
             </div>
 
             {/*Task Description*/}
@@ -221,7 +248,7 @@ function SortableTask({ task }: { task: Task }) {
             </p>
 
             {/*Task Meta*/}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between ">
               <div className="flex items-center space-x-1 sm:space-x-2 min-w-0">
                 {task.assignee && (
                   <div className="flex items-center space-x-1 text-xs text-gray-500">
@@ -238,7 +265,7 @@ function SortableTask({ task }: { task: Task }) {
               </div>
 
               <div
-                className={`w-2 h-2 rounded-full flex-shrink-0 ${getPriorityColor(
+                className={`w-2 h-2 mr-3.5 rounded-full flex-shrink-0 ${getPriorityColor(
                   task.priority
                 )}`}
               ></div>
@@ -319,6 +346,8 @@ export default function BoardPage() {
     updateBoard,
     setColumns,
     moveTask,
+    deleteColumn,
+    deleteTask,
   } = useBoard(id);
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -426,6 +455,12 @@ export default function BoardPage() {
     }
   }
 
+  async function handleDeleteTask(taskId: string) {
+    if (!taskId) return;
+
+    await deleteTask(taskId);
+  }
+
   {
     /*Columns functions*/
   }
@@ -456,6 +491,12 @@ export default function BoardPage() {
     setIsEditingColumn(true);
     setEditingColumn(column);
     setEditingColumnTitle(column.title);
+  }
+
+  async function handleDeleteColumn(columnId: string) {
+    if (!columnId) return;
+
+    await deleteColumn(columnId);
   }
 
   /*Dnd functions*/
@@ -839,6 +880,7 @@ export default function BoardPage() {
                   column={column}
                   onCreateTask={handleCreateTask}
                   onEditColumn={handleEditColumn}
+                  onDeleteColumn={handleDeleteColumn}
                 >
                   <SortableContext
                     items={column.tasks.map((task) => task.id)}
@@ -846,7 +888,11 @@ export default function BoardPage() {
                   >
                     <div className="space-y-3">
                       {column.tasks.map((task, key) => (
-                        <SortableTask key={key} task={task} />
+                        <SortableTask
+                          key={key}
+                          task={task}
+                          onDeleteTask={handleDeleteTask}
+                        />
                       ))}
                     </div>
                   </SortableContext>

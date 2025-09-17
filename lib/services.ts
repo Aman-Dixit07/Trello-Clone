@@ -58,6 +58,11 @@ export const boardService = {
 
     return data;
   },
+
+  async deleteBoard(supabase: SupabaseClient, boardId: string) {
+    const { error } = await supabase.from("boards").delete().eq("id", boardId);
+    if (error) throw error;
+  },
 };
 
 //functions related to columns
@@ -107,6 +112,15 @@ export const columnService = {
 
     if (error) throw error;
     return data;
+  },
+
+  async deleteColumn(supabase: SupabaseClient, columnId: string) {
+    const { error } = await supabase
+      .from("columns")
+      .delete()
+      .eq("id", columnId);
+
+    if (error) throw error;
   },
 };
 
@@ -159,6 +173,12 @@ export const taskService = {
 
     if (error) throw error;
     return data;
+  },
+
+  async deleteTask(supabase: SupabaseClient, taskId: string) {
+    const { error } = await supabase.from("tasks").delete().eq("id", taskId);
+
+    if (error) throw error;
   },
 };
 

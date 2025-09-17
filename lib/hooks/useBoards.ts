@@ -63,7 +63,12 @@ export function useBoards() {
     }
   }
 
-  return { boards, loading, error, createBoard, newBoards };
+  async function deleteBoard(boardId: string) {
+    await boardService.deleteBoard(supabase!, boardId);
+    setBoards((prev) => prev.filter((board) => board.id !== boardId));
+  }
+
+  return { boards, loading, error, createBoard, newBoards, deleteBoard };
 }
 
 export function useBoard(boardId: string) {
@@ -190,6 +195,15 @@ export function useBoard(boardId: string) {
     }
   }
 
+  async function deleteColumn(columnId: string) {
+    try {
+      await columnService.deleteColumn(supabase!, columnId);
+      setColumns((prev) => prev.filter((column) => column.id !== columnId));
+    } catch (error) {
+      console.error("Failed to delete column:", error);
+    }
+  }
+
   async function moveTask(
     taskId: string,
     newColumnId: string,
@@ -228,6 +242,26 @@ export function useBoard(boardId: string) {
     }
   }
 
+  async function deleteTask(taskId: string) {
+    const requiredTaskColumnId = columns.find((col) =>
+      col.tasks.some((task) => task.id === taskId)
+    );
+
+    if (!requiredTaskColumnId) return;
+
+    await taskService.deleteTask(supabase!, taskId);
+    setColumns((prev) =>
+      prev.map((col) =>
+        col.id === requiredTaskColumnId?.id
+          ? {
+              ...col,
+              tasks: col.tasks.filter((task) => task.id !== taskId), // taskId is the deleted task's id
+            }
+          : col
+      )
+    );
+  }
+
   return {
     board,
     columns,
@@ -239,5 +273,7 @@ export function useBoard(boardId: string) {
     updateBoard,
     moveTask,
     setColumns,
+    deleteColumn,
+    deleteTask,
   };
 }

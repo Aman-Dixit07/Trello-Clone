@@ -12,6 +12,7 @@ import {
   Search,
   ListTodo,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,12 +39,15 @@ import { useRouter } from "next/navigation";
 
 export default function DashboardPage() {
   const { user } = useUser();
-  const { createBoard, error, newBoards, boards, loading } = useBoards();
+  const { createBoard, error, newBoards, boards, loading, deleteBoard } =
+    useBoards();
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isFilterOpen, setIsFilterOpen] = useState<boolean>(false);
   const { isFreeUser } = usePlan();
   const canCreateBoard = !isFreeUser || boards.length < 1;
   const [showUpgradeDialog, setShowUpgradeDialog] = useState<boolean>(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState<boolean>(false);
+  const [boardIdToDelete, setBoardIdToDelete] = useState<string | null>(null);
   const router = useRouter();
 
   function clearFilters() {
@@ -60,6 +64,11 @@ export default function DashboardPage() {
     });
   }
 
+  function openConfirmDialog(id: string) {
+    setBoardIdToDelete(id);
+    setShowDeleteDialog(true);
+  }
+
   const handleCreateBoard = async () => {
     if (!canCreateBoard) {
       setShowUpgradeDialog(true);
@@ -67,6 +76,14 @@ export default function DashboardPage() {
     }
 
     await createBoard({ title: "New Board" });
+  };
+
+  const handleDeleteBoard = async (boardIdToDelete: string | null) => {
+    if (!boardIdToDelete) return;
+
+    await deleteBoard(boardIdToDelete);
+    setShowDeleteDialog(false);
+    setBoardIdToDelete(null);
   };
 
   const [filters, setFilters] = useState({
@@ -289,38 +306,50 @@ export default function DashboardPage() {
           {boards.length === 0 ? (
             <div>No boards yet</div>
           ) : viewMode === "grid" ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 ">
               {filteredBoards.map((board, key) => (
-                <Link href={`/boards/${board.id}`} key={key}>
-                  <Card className="hover:shadow-lg transition-shadow cursor-pointer group">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <div className={`w-4 h-4 ${board.color} rounded`} />
-                        <Badge className="text-xs" variant="secondary">
-                          New
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="p-4 sm:p-6">
-                      <CardTitle className="text-base sm:text-lg mb-2 group-hover:text-blue-600 transition-colors">
-                        {board.title}
-                      </CardTitle>
-                      <CardDescription className="text-sm mb-4">
-                        {board.description}
-                      </CardDescription>
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs text-gray-500 space-y-1 sm:space-y-0">
-                        <span>
-                          Created{" "}
-                          {new Date(board.created_at).toLocaleDateString()}
-                        </span>
-                        <span>
-                          Updated{" "}
-                          {new Date(board.updated_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
+                <div key={key} className="border bg-white shadow-sm rounded-lg">
+                  <Link href={`/boards/${board.id}`}>
+                    <div className="p-2">
+                      <Card className="hover:shadow-lg transition-shadow cursor-pointer group ">
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between ">
+                            <div className={`w-4 h-4 ${board.color} rounded`} />
+                            <Badge className="text-xs" variant="secondary">
+                              New
+                            </Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="p-4 sm:p-6">
+                          <CardTitle className="text-base sm:text-lg mb-2 group-hover:text-blue-600 transition-colors">
+                            {board.title}
+                          </CardTitle>
+                          <CardDescription className="text-sm mb-4">
+                            {board.description}
+                          </CardDescription>
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs text-gray-500 space-y-1 sm:space-y-0">
+                            <span>
+                              Created{" "}
+                              {new Date(board.created_at).toLocaleDateString()}
+                            </span>
+                            <span>
+                              Updated{" "}
+                              {new Date(board.updated_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </Link>
+                  <Button
+                    variant="ghost"
+                    className="w-full  text-gray-500 hover:text-red-600 hover:bg-red-100 cursor-pointer"
+                    onClick={() => openConfirmDialog(board.id)}
+                  >
+                    <Trash2 />
+                    Delete
+                  </Button>
+                </div>
               ))}
               <Card
                 onClick={handleCreateBoard}
@@ -336,38 +365,53 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div>
-              {boards.map((board, key) => (
+              {filteredBoards.map((board, key) => (
                 <div key={key} className={key > 0 ? "mt-4" : ""}>
-                  <Link href={`/boards/${board.id}`}>
-                    <Card className="hover:shadow-lg transition-shadow cursor-pointer group">
-                      <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                          <div className={`w-4 h-4 ${board.color} rounded`} />
-                          <Badge className="text-xs" variant="secondary">
-                            New
-                          </Badge>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-4 sm:p-6">
-                        <CardTitle className="text-base sm:text-lg mb-2 group-hover:text-blue-600 transition-colors">
-                          {board.title}
-                        </CardTitle>
-                        <CardDescription className="text-sm mb-4">
-                          {board.description}
-                        </CardDescription>
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs text-gray-500 space-y-1 sm:space-y-0">
-                          <span>
-                            Created{" "}
-                            {new Date(board.created_at).toLocaleDateString()}
-                          </span>
-                          <span>
-                            Updated{" "}
-                            {new Date(board.updated_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </Link>
+                  <div className="bg-white rounded-lg shadow-sm border">
+                    <Link href={`/boards/${board.id}`}>
+                      <div className="p-2">
+                        <Card className="hover:shadow-lg transition-shadow cursor-pointer group">
+                          <CardHeader className="pb-3">
+                            <div className={`w-4 h-4 ${board.color} rounded`} />
+                            <div className="flex  items-center justify-end">
+                              <Badge className="text-xs" variant="secondary">
+                                New
+                              </Badge>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="p-4 sm:p-6">
+                            <CardTitle className="text-base sm:text-lg mb-2 group-hover:text-blue-600 transition-colors">
+                              {board.title}
+                            </CardTitle>
+                            <CardDescription className="text-sm mb-4">
+                              {board.description}
+                            </CardDescription>
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs text-gray-500 space-y-1 sm:space-y-0">
+                              <span>
+                                Created{" "}
+                                {new Date(
+                                  board.created_at
+                                ).toLocaleDateString()}
+                              </span>
+                              <span>
+                                Updated{" "}
+                                {new Date(
+                                  board.updated_at
+                                ).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </Link>
+                    <Button
+                      variant="ghost"
+                      className="w-full  text-gray-500 hover:text-red-600 hover:bg-red-100 cursor-pointer"
+                    >
+                      <Trash2 />
+                      Delete
+                    </Button>
+                  </div>
                 </div>
               ))}
               <Card
@@ -516,6 +560,34 @@ export default function DashboardPage() {
               Cancel
             </Button>
             <Button onClick={() => router.push("/pricing")}>View Plans</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/*Confirm Delete Dialogue*/}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="w-[95vw] max-w-[425px] mx-auto">
+          <DialogHeader>
+            <DialogTitle>Confirm Delete</DialogTitle>
+            <p className="text-sm text-gray-600">
+              Are you sure you want to delete this item? This action cannot be
+              undone. Please confirm to proceed with deletion.
+            </p>
+          </DialogHeader>
+          <div className="flex justify-end space-x-4 pt-4 ">
+            <Button
+              variant={"outline"}
+              onClick={() => setShowDeleteDialog(false)}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              className="hover:bg-red-600 cursor-pointer"
+              onClick={() => handleDeleteBoard(boardIdToDelete)}
+            >
+              Delete
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
